@@ -15,7 +15,7 @@
  - [Compatibility manifest](https://learn.microsoft.com/en-us/windows/win32/sysinfo/targeting-your-application-at-windows-8-1)
 
 **Notice**
- - I don't see any reliable stand-alone code examples on C++ all over, so I re-wrote on C++ the analogue of my [VB6 implementation](https://github.com/dragokas/hijackthis/blob/devel/src/modVerifyDigiSign.bas#L1050) from HiJactkHis Fork project.
+ - I don't see any reliable stand-alone code examples on C++ all over, so I re-wrote on C++ the analogue of my [VB6 implementation](https://github.com/dragokas/hijackthis/blob/devel/src/modVerifyDigiSign.bas#L1050) in HiJackThis Fork project.
 
 **Manual**
- - If you'd like detailed description of signature machanism, read [my article](https://www.cyberforum.ru/visual-basic/thread1978422.html) (on Russian).
+ - If you'd like detailed description of signature machanism, please read [my article](https://www.cyberforum.ru/visual-basic/thread1978422.html) (on Russian).
