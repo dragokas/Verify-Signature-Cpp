@@ -166,7 +166,7 @@ bool VerifySignature(LPCWSTR lpFileName)
 
     for (DWORD i = 0; i < dwHashSize; ++i)
     {
-        wsprintfW(&pszMemberTag[i * 2], L"%X", fileHash[i]);
+        wsprintfW(&pszMemberTag[i * 2], L"%02X", fileHash[i]);
     }
 
     hCatInfoContext = CryptCATAdminEnumCatalogFromHash(hCatAdmin, &fileHash.front(), dwHashSize, 0, NULL);
