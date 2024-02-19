@@ -166,7 +166,7 @@ bool VerifySignature(LPCWSTR lpFileName)
 
     for (DWORD i = 0; i < dwHashSize; ++i)
     {
-        wsprintfW(&pszMemberTag[i * 2], L"%02X", fileHash[i]);
+        wsprintfW(&pszMemberTag[i * 2], L"%X", fileHash[i]);
     }
 
     hCatInfoContext = CryptCATAdminEnumCatalogFromHash(hCatAdmin, &fileHash.front(), dwHashSize, 0, NULL);
@@ -191,7 +191,6 @@ bool VerifySignature(LPCWSTR lpFileName)
     wd.dwStateAction = WTD_STATEACTION_VERIFY;
     wd.fdwRevocationChecks = WTD_REVOKE_NONE;
     wd.dwProvFlags = IsWindowsVistaOrGreater() ? WTD_CACHE_ONLY_URL_RETRIEVAL : WTD_REVOCATION_CHECK_NONE;
-    wd.dwProvFlags |= WTD_SAFER_FLAG;
     wd.hWVTStateData = NULL;
     wd.pwszURLReference = NULL;
 
