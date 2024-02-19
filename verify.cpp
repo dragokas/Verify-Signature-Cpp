@@ -9,6 +9,13 @@
 #include <vector>
 
 #pragma comment (lib, "wintrust")
+#pragma comment (lib, "Crypt32")
+
+struct SignResult
+{
+    std::wstring HashFinalCert;
+    std::wstring SubjectName;
+};
 
 PVOID m_RedirectorOldValue = NULL;
 
@@ -16,17 +23,17 @@ void PrintLastError(const WCHAR* msg)
 {
     LPWSTR str = NULL;
     if (FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL, 
+        NULL,
         GetLastError(),
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // or MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US) to use English
-        (LPWSTR)&str, 
+        (LPWSTR)&str,
         0,
         NULL))
     {
         while (wchar_t* pFound = wcsstr(str, L"\r\n"))
         {
             *pFound = L' ';
-            *(pFound+1) = L' ';
+            *(pFound + 1) = L' ';
         }
         wprintf_s(L"%s: %s\n", msg, str);
         LocalFree(str);
@@ -81,7 +88,56 @@ bool ToggleFileSystemRedirector(bool bEnable, LPCWSTR path = NULL)
     return false;
 }
 
-bool VerifySignature(LPCWSTR lpFileName)
+std::wstring ExtractStringFromCertificate(PCCERT_CONTEXT pCertificate, DWORD dwType, DWORD dwFlags = 0)
+{
+    DWORD size = CertGetNameString(pCertificate, dwType, dwFlags, NULL, NULL, NULL);
+    if (size)
+    {
+        std::vector<wchar_t> buff(size);
+        CertGetNameString(pCertificate, dwType, dwFlags, NULL, (LPWSTR)&buff[0], size);
+        std::wstring result(buff.begin(), buff.end());
+        return result;
+    }
+    return L"";
+}
+
+void GetSignerInfo(HANDLE hWVTStateData, SignResult& SignResult)
+{
+    CRYPT_PROVIDER_DATA* pProvData = WTHelperProvDataFromStateData(hWVTStateData);
+    if (pProvData != NULL)
+    {
+        int idxSigner = 0;
+        CRYPT_PROVIDER_SGNR* pCPSigner = WTHelperGetProvSignerFromChain(pProvData, idxSigner, FALSE, 0);
+        if (pCPSigner != NULL)
+        {
+            PCCERT_CONTEXT pCertificate = CertDuplicateCertificateContext(pCPSigner->pasCertChain->pCert);
+            if (pCertificate != NULL)
+            {
+                DWORD size = 0;
+                CertGetCertificateContextProperty(pCertificate, CERT_HASH_PROP_ID, NULL, &size);
+                if (size != 0)
+                {
+                    std::vector<uint8_t> buff(size);
+                    if (CertGetCertificateContextProperty(pCertificate, CERT_HASH_PROP_ID, &buff.front(), &size))
+                    {
+                        WCHAR pszMemberTag[100] = { 0 };
+                        for (DWORD i = 0; i < size; ++i)
+                        {
+                            wsprintfW(&pszMemberTag[i * 2], L"%02X", buff[i]);
+                        }
+                        SignResult.HashFinalCert = pszMemberTag;
+                    }
+                }
+
+                SignResult.SubjectName = ExtractStringFromCertificate(pCertificate, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0);
+
+                CertFreeCertificateContext(pCertificate);
+            }
+        }
+    }
+}
+
+bool VerifySignature(LPCWSTR lpFileName, SignResult& signResult)
 {
     BOOL bRet = FALSE, bIsVerified = FALSE;
     WINTRUST_DATA wd = { 0 };
@@ -98,13 +154,13 @@ bool VerifySignature(LPCWSTR lpFileName)
     // redirector OFF
     ToggleFileSystemRedirector(false, lpFileName);
 
-    HANDLE hFile = CreateFileW(lpFileName, 
-        FILE_READ_ATTRIBUTES | FILE_READ_DATA | STANDARD_RIGHTS_READ, 
+    HANDLE hFile = CreateFileW(lpFileName,
+        FILE_READ_ATTRIBUTES | FILE_READ_DATA | STANDARD_RIGHTS_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
     // redirector ON
-    ToggleFileSystemRedirector(true, NULL); 
+    ToggleFileSystemRedirector(true, NULL);
 
     if (INVALID_HANDLE_VALUE == hFile)
     {
@@ -137,7 +193,7 @@ bool VerifySignature(LPCWSTR lpFileName)
     if (IsWindows8OrGreater())
     {
         bRet = CryptCATAdminCalcHashFromFileHandle2(hCatAdmin, hFile, &dwHashSize, NULL, 0);
-        
+
         if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
         {
             fileHash.resize(dwHashSize);
@@ -166,13 +222,14 @@ bool VerifySignature(LPCWSTR lpFileName)
 
     for (DWORD i = 0; i < dwHashSize; ++i)
     {
-        wsprintfW(&pszMemberTag[i * 2], L"%X", fileHash[i]);
+        wsprintfW(&pszMemberTag[i * 2], L"%02X", fileHash[i]);
     }
 
     hCatInfoContext = CryptCATAdminEnumCatalogFromHash(hCatAdmin, &fileHash.front(), dwHashSize, 0, NULL);
 
     if (hCatInfoContext != NULL)
     {
+        catalogInfo.cbStruct = sizeof(CATALOG_INFO);
         if (!CryptCATCatalogInfoFromContext(hCatInfoContext, &catalogInfo, 0))
         {
             CryptCATAdminReleaseCatalogContext(hCatAdmin, hCatInfoContext, 0);
@@ -202,7 +259,7 @@ bool VerifySignature(LPCWSTR lpFileName)
         wd.dwUnionChoice = WTD_CHOICE_CATALOG;
         wd.pCatalog = &wci;
         wd.dwUIContext = WTD_UICONTEXT_EXECUTE;
-        
+
         wci.cbStruct = sizeof(WINTRUST_CATALOG_INFO);
         wci.pcwszCatalogFilePath = catalogInfo.wszCatalogFile;
         wci.pcwszMemberTag = pszMemberTag;
@@ -213,11 +270,11 @@ bool VerifySignature(LPCWSTR lpFileName)
         wci.hCatAdmin = hCatAdmin;
 
         wprintf_s(L"Verified by Catalogue.\n");
-    } 
+    }
     else {
         wd.dwUnionChoice = WTD_CHOICE_FILE;
         wd.pFile = &wfi;
-        
+
         wfi.cbStruct = sizeof(WINTRUST_FILE_INFO);
         wfi.pcwszFilePath = NULL;
         wfi.hFile = hFile;
@@ -241,6 +298,10 @@ bool VerifySignature(LPCWSTR lpFileName)
     iResult = WinVerifyTrust((HWND)INVALID_HANDLE_VALUE, &VerifyGuid, &wd);
     wprintf_s(L"WinVerifyTrust returned: 0x%X (err: 0x%X)\n", iResult, GetLastError());
     bIsVerified = TRUE;
+    if (iResult == 0 || iResult == CERT_E_UNTRUSTEDROOT || iResult == CERT_E_EXPIRED)
+    {
+        GetSignerInfo(wd.hWVTStateData, signResult);
+    }
 
 Finalize:
 
@@ -258,16 +319,32 @@ Finalize:
 
     CloseHandle(hFile);
 
-    return iResult == 0;
+    return iResult == 0 || iResult == CERT_E_UNTRUSTEDROOT || iResult == CERT_E_EXPIRED;
+}
+
+bool FileExists(LPCWSTR file)
+{
+    DWORD attr = GetFileAttributesW(file);
+    return attr != INVALID_FILE_ATTRIBUTES && ((attr & FILE_ATTRIBUTE_DIRECTORY) == 0);
 }
 
 int main()
 {
     setlocale(LC_ALL, "Russian");
-    LPCWSTR file = L"C:\\Windows\\System32\\bootsect.exe";
-    if (VerifySignature(file))
+
+    SignResult signResult;
+    LPCWSTR file = L"C:\\Windows\\System32\\ntdll.dll";
+
+    if (!FileExists(file))
     {
-        std::cout << "Signatue: Ok." << std::endl;
+        wprintf_s(L"File not found: %s\n", file);
+        return 1;
+    }
+
+    if (VerifySignature(file, signResult))
+    {
+        wprintf_s(L"Cert Hash: %s\n", signResult.HashFinalCert.c_str());
+        wprintf_s(L"Publisher: %s\n", signResult.SubjectName.c_str());
     }
     else std::cout << "Signatue: Failed!" << std::endl;
 }
