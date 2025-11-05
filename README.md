@@ -19,3 +19,9 @@
 
 **Manual**
  - If you'd like detailed description of signature machanism, please read [my article](https://www.cyberforum.ru/visual-basic/thread1978422.html) (on Russian).
+
+**Discussion**
+ - Comparation to Windows Classic Samples code: https://github.com/dragokas/Verify-Signature-Cpp/issues/1
+
+**License**
+ - GNU GPL v3
