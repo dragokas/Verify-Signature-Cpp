@@ -139,7 +139,7 @@ void GetSignerInfo(HANDLE hWVTStateData, SignResult& SignResult)
 
 bool VerifySignature(LPCWSTR lpFileName, SignResult& signResult)
 {
-    BOOL bRet = FALSE, bIsVerified = FALSE;
+    BOOL bRet = FALSE;
     WINTRUST_DATA wd = { 0 };
     WINTRUST_FILE_INFO wfi = { 0 };
     WINTRUST_CATALOG_INFO wci = { 0 };
@@ -297,7 +297,7 @@ bool VerifySignature(LPCWSTR lpFileName, SignResult& signResult)
 
     iResult = WinVerifyTrust((HWND)INVALID_HANDLE_VALUE, &VerifyGuid, &wd);
     wprintf_s(L"WinVerifyTrust returned: 0x%X (err: 0x%X)\n", iResult, GetLastError());
-    bIsVerified = TRUE;
+    
     if (iResult == 0 || iResult == CERT_E_UNTRUSTEDROOT || iResult == CERT_E_EXPIRED)
     {
         GetSignerInfo(wd.hWVTStateData, signResult);
@@ -308,7 +308,7 @@ Finalize:
     if (hCatAdmin && hCatInfoContext)
         CryptCATAdminReleaseCatalogContext(hCatAdmin, hCatInfoContext, 0);
 
-    if (bIsVerified)
+    if (wd.hWVTStateData)
     {
         wd.dwStateAction = WTD_STATEACTION_CLOSE;
         WinVerifyTrust((HWND)INVALID_HANDLE_VALUE, &VerifyGuid, &wd);
@@ -348,3 +348,4 @@ int main()
     }
     else std::cout << "Signatue: Failed!" << std::endl;
 }
+
